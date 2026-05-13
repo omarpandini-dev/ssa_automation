@@ -3,8 +3,11 @@
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
+from dotenv import load_dotenv
 
 from ini import render_ini_page
+
+load_dotenv()
 
 app = FastAPI(title="Login Page")
 app.add_middleware(
@@ -12,8 +15,13 @@ app.add_middleware(
     secret_key=os.getenv("SESSION_SECRET_KEY", "change-this-secret-key"),
 )
 
-VALID_USER = "admin"
-VALID_PASSWORD = "admin"
+VALID_USER = os.getenv("APP_LOGIN_USER")
+VALID_PASSWORD = os.getenv("APP_LOGIN_PASSWORD")
+
+if not VALID_USER or not VALID_PASSWORD:
+    raise RuntimeError(
+        "Defina APP_LOGIN_USER e APP_LOGIN_PASSWORD no arquivo .env antes de iniciar a aplicacao."
+    )
 
 
 def render_login_page(error: str = "") -> str:

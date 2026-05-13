@@ -13,3 +13,4 @@ ENV/
 htmlcov/
 
 session.json
+.env
