@@ -1,83 +1,69 @@
-# FastAPI Hello Word
+# SSA Automation - FastAPI Login
 
-API simples com FastAPI que retorna `Hello Word`.
+Aplicacao FastAPI com pagina de login e painel protegido por sessao.
 
-## Endpoint
+## Estrutura principal
 
-- `GET /` -> `{"message":"Hello Word"}`
+- `login.py`: app principal (`login:app`) com rotas de login, logout e protecao de sessao.
+- `ini.py`: renderizacao da pagina de painel (`/ini`).
+- `.env`: credenciais e chave de sessao.
 
-## Rodar localmente (sem Docker)
+## Requisitos
+
+- Python 3.10+ (recomendado)
+- `pip`
+
+## Configuracao de ambiente
+
+Copie o exemplo e ajuste as credenciais:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Variaveis usadas:
+
+- `APP_LOGIN_USER`
+- `APP_LOGIN_PASSWORD`
+- `SESSION_SECRET_KEY`
+
+## Rodar localmente (Windows PowerShell)
+
+```powershell
+cd c:\Users\mzo_p\OneDrive\Documentos\python\ssa_automation
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn login:app --reload
+```
+
+Abra:
+
+- `http://127.0.0.1:8000/`
+
+## Rodar localmente (Linux/Mac)
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# .venv\Scripts\activate   # Windows PowerShell
+source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn main:app --reload
+uvicorn login:app --reload
 ```
 
-Acesse: `http://localhost:8000`
-
-## Rodar com Docker localmente
+## Rodar com Docker
 
 ```bash
-docker build -t hello-word-api .
-docker run -d --name hello-word-api -p 8000:8000 hello-word-api
+docker build -t ssa-automation .
+docker run --rm -p 8000:8000 --env-file .env ssa-automation
 ```
 
-Teste:
+Abra:
 
-```bash
-curl http://localhost:8000/
-```
+- `http://127.0.0.1:8000/`
 
-## Deploy na VPS Hostinger usando EasyPanel
+## Rotas principais
 
-## 1) Subir código no GitHub
-
-Crie um repositório com estes arquivos:
-
-- `main.py`
-- `requirements.txt`
-- `Dockerfile`
-- `.dockerignore`
-- `README.md`
-
-## 2) Criar o app no EasyPanel
-
-1. No EasyPanel, clique em **New Project** (ou selecione um projeto existente).
-2. Clique em **New Service**.
-3. Escolha **App**.
-4. Selecione **Deploy from Git Repository**.
-5. Conecte o repositório.
-6. Branch: `main` (ou a que você usar).
-
-## 3) Configurar Build e Porta
-
-- O EasyPanel vai detectar o `Dockerfile` automaticamente.
-- Configure a porta do serviço para `8000` (porta interna do container).
-
-Comando de start já está no `Dockerfile`:
-
-```bash
-uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-## 4) Publicar domínio
-
-1. Abra o serviço criado.
-2. Vá em **Domains**.
-3. Adicione seu domínio/subdomínio.
-4. Ative SSL (Let's Encrypt) no EasyPanel.
-
-## 5) Verificação
-
-Depois do deploy, teste:
-
-- `https://seu-dominio/`
-
-Resposta esperada:
-
-```json
-{"message":"Hello Word"}
-```
+- `GET /`: pagina de login
+- `POST /login`: autentica usuario/senha
+- `GET /ini`: painel protegido por sessao
+- `POST /logout`: encerra sessao
