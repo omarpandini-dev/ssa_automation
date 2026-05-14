@@ -1,4 +1,11 @@
-﻿import os
+import os
+import html
+import time
+import json
+import base64
+import ssl
+from urllib import request as urllib_request
+from urllib.error import URLError, HTTPError
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -15,17 +22,20 @@ app.add_middleware(
     secret_key=os.getenv("SESSION_SECRET_KEY", "change-this-secret-key"),
 )
 
-VALID_USER = os.getenv("APP_LOGIN_USER")
-VALID_PASSWORD = os.getenv("APP_LOGIN_PASSWORD")
+AUTH_API_URL = os.getenv("AUTH_API_URL")
+AUTH_API_USER = os.getenv("AUTH_API_USER")
+AUTH_API_PASSWORD = os.getenv("AUTH_API_PASSWORD")
+AUTH_API_VERIFY_SSL = os.getenv("AUTH_API_VERIFY_SSL", "true").lower() == "true"
+SESSION_IDLE_TIMEOUT_SECONDS = 30 * 60
 
-if not VALID_USER or not VALID_PASSWORD:
+if not AUTH_API_URL or not AUTH_API_USER or not AUTH_API_PASSWORD:
     raise RuntimeError(
-        "Defina APP_LOGIN_USER e APP_LOGIN_PASSWORD no arquivo .env antes de iniciar a aplicacao."
+        "Defina AUTH_API_URL, AUTH_API_USER e AUTH_API_PASSWORD no arquivo .env antes de iniciar a aplicacao."
     )
 
 
 def render_login_page(error: str = "") -> str:
-    error_html = f'<div class="error">{error}</div>' if error else ""
+    error_html = f'<div class="error">{html.escape(error)}</div>' if error else ""
     return f"""<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -150,24 +160,94 @@ def render_login_page(error: str = "") -> str:
 """
 
 
+def _authenticate_with_api(username: str, password: str) -> tuple[bool, str]:
+    credentials = f"{AUTH_API_USER}:{AUTH_API_PASSWORD}".encode("utf-8")
+    auth_header = base64.b64encode(credentials).decode("utf-8")
+    payload = json.dumps({"user": username, "password": password}).encode("utf-8")
+
+    req = urllib_request.Request(
+        AUTH_API_URL,
+        data=payload,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Basic {auth_header}",
+        },
+    )
+
+    handlers = [urllib_request.ProxyHandler({})]
+    if not AUTH_API_VERIFY_SSL:
+        insecure_context = ssl._create_unverified_context()
+        handlers.append(urllib_request.HTTPSHandler(context=insecure_context))
+    opener = urllib_request.build_opener(*handlers)
+
+    try:
+        with opener.open(req, timeout=10) as response:
+            body = response.read().decode("utf-8")
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore")
+        try:
+            data = json.loads(body) if body else {}
+            return False, data.get("msg", "Falha ao validar login.")
+        except json.JSONDecodeError:
+            return False, "Falha ao validar login."
+    except (URLError, TimeoutError) as exc:
+        ssl_error = isinstance(getattr(exc, "reason", None), ssl.SSLError) or isinstance(exc, ssl.SSLError)
+        if ssl_error:
+            return False, "Falha SSL na autenticacao. Configure AUTH_API_VERIFY_SSL=false no .env."
+        return False, "Servico de autenticacao indisponivel. Tente novamente."
+
+    try:
+        data = json.loads(body) if body else {}
+    except json.JSONDecodeError:
+        return False, "Resposta invalida do servico de autenticacao."
+
+    status = bool(data.get("status"))
+    message = data.get("msg", "")
+
+    if status:
+        return True, message or "Login efetuado com sucesso."
+    return False, message or "Usuario ou senha invalidos."
+
+
+def _is_session_active(request: Request) -> bool:
+    if not request.session.get("authenticated"):
+        return False
+
+    last_activity = request.session.get("last_activity")
+    if not isinstance(last_activity, (int, float)):
+        request.session.clear()
+        return False
+
+    now = int(time.time())
+    if now - int(last_activity) > SESSION_IDLE_TIMEOUT_SECONDS:
+        request.session.clear()
+        return False
+
+    request.session["last_activity"] = now
+    return True
+
+
 @app.get("/", response_class=HTMLResponse)
 def login_page(request: Request):
-    if request.session.get("authenticated"):
+    if _is_session_active(request):
         return RedirectResponse(url="/ini", status_code=303)
     return render_login_page()
 
 
 @app.post("/login")
 def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    if username == VALID_USER and password == VALID_PASSWORD:
+    is_valid, message = _authenticate_with_api(username=username, password=password)
+    if is_valid:
         request.session["authenticated"] = True
+        request.session["last_activity"] = int(time.time())
         return RedirectResponse(url="/ini", status_code=303)
-    return HTMLResponse(content=render_login_page("Usuario ou senha invalidos."), status_code=401)
+    return HTMLResponse(content=render_login_page(message), status_code=401)
 
 
 @app.get("/ini", response_class=HTMLResponse)
 def ini_page(request: Request):
-    if not request.session.get("authenticated"):
+    if not _is_session_active(request):
         return RedirectResponse(url="/", status_code=303)
     return render_ini_page()
 
