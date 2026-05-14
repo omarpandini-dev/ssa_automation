@@ -4,8 +4,11 @@ import time
 import json
 import base64
 import ssl
+import secrets
+import smtplib
 from urllib import request as urllib_request
 from urllib.error import URLError, HTTPError
+from email.message import EmailMessage
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -26,6 +29,12 @@ AUTH_API_URL = os.getenv("AUTH_API_URL")
 AUTH_API_USER = os.getenv("AUTH_API_USER")
 AUTH_API_PASSWORD = os.getenv("AUTH_API_PASSWORD")
 AUTH_API_VERIFY_SSL = os.getenv("AUTH_API_VERIFY_SSL", "true").lower() == "true"
+EMAIL_SMTP_HOST = os.getenv("EMAIL_SMTP_HOST")
+EMAIL_SMTP_PORT = int(os.getenv("EMAIL_SMTP_PORT", "587"))
+EMAIL_SMTP_USER = os.getenv("EMAIL_SMTP_USER")
+EMAIL_SMTP_PASSWORD = os.getenv("EMAIL_SMTP_PASSWORD")
+EMAIL_SMTP_FROM = os.getenv("EMAIL_SMTP_FROM")
+EMAIL_SMTP_STARTTLS = os.getenv("EMAIL_SMTP_STARTTLS", "true").lower() == "true"
 SESSION_IDLE_TIMEOUT_SECONDS = 30 * 60
 
 if not AUTH_API_URL or not AUTH_API_USER or not AUTH_API_PASSWORD:
@@ -154,10 +163,160 @@ def render_login_page(error: str = "") -> str:
 
       <button type="submit">Login</button>
     </form>
+    <p style="margin-top:12px;margin-bottom:0;">
+      <a href="/forgot-password" style="color:#9cc0ff;text-decoration:none;">Esqueci minha senha</a>
+    </p>
   </main>
 </body>
 </html>
 """
+
+
+def render_forgot_password_page(message: str = "", is_error: bool = False) -> str:
+    message_html = ""
+    if message:
+        css_class = "error" if is_error else "info"
+        message_html = f'<div class="{css_class}">{html.escape(message)}</div>'
+
+    return f"""<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recuperar senha</title>
+  <style>
+    :root {{
+      --bg-1: #071429;
+      --bg-2: #0b1f3a;
+      --card: #102845;
+      --text: #e8f1ff;
+      --muted: #a8bfdc;
+      --accent: #2f6df6;
+      --accent-hover: #2458c8;
+      --error: #ff8f8f;
+      --info: #9cd5ff;
+      --border: #1b3c64;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 15% 20%, #15365f 0%, transparent 38%),
+        radial-gradient(circle at 85% 80%, #113059 0%, transparent 40%),
+        linear-gradient(135deg, var(--bg-1), var(--bg-2));
+      padding: 20px;
+    }}
+    .card {{
+      width: 100%;
+      max-width: 420px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      border: 1px solid var(--border);
+      backdrop-filter: blur(6px);
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: 0 24px 50px rgba(0, 0, 0, 0.35);
+    }}
+    h1 {{ margin: 0 0 8px; font-size: 28px; }}
+    p {{ margin: 0 0 22px; color: var(--muted); font-size: 14px; }}
+    label {{ display: block; margin: 12px 0 6px; font-size: 14px; color: #d5e4ff; }}
+    input {{
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #0c223d;
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 15px;
+      outline: none;
+    }}
+    button {{
+      width: 100%;
+      margin-top: 18px;
+      border: 0;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      padding: 12px 14px;
+      cursor: pointer;
+    }}
+    button:hover {{ background: var(--accent-hover); }}
+    .error {{
+      margin: 0 0 14px;
+      border: 1px solid rgba(255, 143, 143, 0.45);
+      background: rgba(255, 143, 143, 0.12);
+      color: var(--error);
+      font-size: 14px;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }}
+    .info {{
+      margin: 0 0 14px;
+      border: 1px solid rgba(156, 213, 255, 0.45);
+      background: rgba(156, 213, 255, 0.12);
+      color: var(--info);
+      font-size: 14px;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }}
+    .back {{
+      display: inline-block;
+      margin-top: 14px;
+      color: #9cc0ff;
+      text-decoration: none;
+      font-size: 14px;
+    }}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Recuperar senha</h1>
+    <p>Informe seu e-mail para receber as instrucoes.</p>
+    {message_html}
+    <form method="post" action="/forgot-password">
+      <label for="email">E-mail</label>
+      <input id="email" name="email" type="email" autocomplete="email" required />
+      <button type="submit">Enviar e-mail</button>
+    </form>
+    <a class="back" href="/">Voltar para o login</a>
+  </main>
+</body>
+</html>
+"""
+
+
+def _send_forgot_password_email(email: str) -> None:
+    random_text = secrets.token_urlsafe(32)
+    body = (
+        "Solicitacao de recuperacao de senha recebida.\n\n"
+        f"Texto aleatorio temporario: {random_text}\n"
+    )
+
+    msg = EmailMessage()
+    msg["Subject"] = "Recuperacao de senha"
+    msg["From"] = EMAIL_SMTP_FROM or "no-reply@example.com"
+    msg["To"] = email
+    msg.set_content(body)
+
+    smtp_is_configured = all(
+        [EMAIL_SMTP_HOST, EMAIL_SMTP_USER, EMAIL_SMTP_PASSWORD, EMAIL_SMTP_FROM]
+    )
+    if not smtp_is_configured:
+        print(f"[forgot-password] SMTP nao configurado. Email gerado para {email}.")
+        print(body)
+        return
+
+    with smtplib.SMTP(EMAIL_SMTP_HOST, EMAIL_SMTP_PORT, timeout=10) as server:
+        if EMAIL_SMTP_STARTTLS:
+            server.starttls()
+        server.login(EMAIL_SMTP_USER, EMAIL_SMTP_PASSWORD)
+        server.send_message(msg)
 
 
 def _authenticate_with_api(username: str, password: str) -> tuple[bool, str]:
@@ -243,6 +402,38 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
         request.session["last_activity"] = int(time.time())
         return RedirectResponse(url="/ini", status_code=303)
     return HTMLResponse(content=render_login_page(message), status_code=401)
+
+
+@app.get("/forgot-password", response_class=HTMLResponse)
+def forgot_password_page():
+    return render_forgot_password_page()
+
+
+@app.post("/forgot-password", response_class=HTMLResponse)
+def forgot_password(email: str = Form(...)):
+    if "@" not in email:
+        return HTMLResponse(
+            content=render_forgot_password_page("Informe um e-mail valido.", is_error=True),
+            status_code=400,
+        )
+
+    try:
+        _send_forgot_password_email(email=email.strip())
+    except Exception:
+        return HTMLResponse(
+            content=render_forgot_password_page(
+                "Nao foi possivel enviar o e-mail agora. Tente novamente em instantes.",
+                is_error=True,
+            ),
+            status_code=502,
+        )
+
+    return HTMLResponse(
+        content=render_forgot_password_page(
+            "Se o e-mail existir, voce recebera as instrucoes em alguns minutos."
+        ),
+        status_code=200,
+    )
 
 
 @app.get("/ini", response_class=HTMLResponse)

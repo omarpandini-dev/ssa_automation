@@ -23,9 +23,17 @@ Copy-Item .env.example .env
 
 Variaveis usadas:
 
-- `APP_LOGIN_USER`
-- `APP_LOGIN_PASSWORD`
+- `AUTH_API_URL`
+- `AUTH_API_USER`
+- `AUTH_API_PASSWORD`
+- `AUTH_API_VERIFY_SSL`
 - `SESSION_SECRET_KEY`
+- `EMAIL_SMTP_HOST`
+- `EMAIL_SMTP_PORT`
+- `EMAIL_SMTP_USER`
+- `EMAIL_SMTP_PASSWORD`
+- `EMAIL_SMTP_FROM`
+- `EMAIL_SMTP_STARTTLS`
 
 ## Rodar localmente (Windows PowerShell)
 
@@ -65,5 +73,7 @@ Abra:
 
 - `GET /`: pagina de login
 - `POST /login`: autentica usuario/senha
+- `GET /forgot-password`: formulario de recuperacao
+- `POST /forgot-password`: envia email de recuperacao
 - `GET /ini`: painel protegido por sessao
 - `POST /logout`: encerra sessao

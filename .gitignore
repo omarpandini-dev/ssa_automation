@@ -8,6 +8,8 @@ session.json
 # C extensions
 *.so
 
+login.cpython-314
+
 # Distribution / packaging
 .Python
 build/
