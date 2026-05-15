@@ -8,7 +8,7 @@ session.json
 # C extensions
 *.so
 
-login.cpython-314
+__pycache__/
 
 # Distribution / packaging
 .Python

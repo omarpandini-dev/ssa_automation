@@ -4,7 +4,6 @@ import time
 import json
 import base64
 import ssl
-import secrets
 import smtplib
 from urllib import request as urllib_request
 from urllib.error import URLError, HTTPError
@@ -16,10 +15,12 @@ from starlette.middleware.sessions import SessionMiddleware
 from dotenv import load_dotenv
 
 from ini import render_ini_page
+from recuperacao_senha import router as recuperacao_senha_router
 
 load_dotenv()
 
 app = FastAPI(title="Login Page")
+app.include_router(recuperacao_senha_router)
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.getenv("SESSION_SECRET_KEY", "change-this-secret-key"),
@@ -36,6 +37,10 @@ EMAIL_SMTP_PASSWORD = os.getenv("EMAIL_SMTP_PASSWORD")
 EMAIL_SMTP_FROM = os.getenv("EMAIL_SMTP_FROM")
 EMAIL_SMTP_STARTTLS = os.getenv("EMAIL_SMTP_STARTTLS", "true").lower() == "true"
 SESSION_IDLE_TIMEOUT_SECONDS = 30 * 60
+FORGOT_PASSWORD_WEBHOOK_URL = os.getenv(
+    "FORGOT_PASSWORD_WEBHOOK_URL",
+    "https://n8n-fila-n8n-start.cr61qk.easypanel.host/webhook/cde833b3-e5d6-4395-a494-d1223625fcbc",
+)
 
 if not AUTH_API_URL or not AUTH_API_USER or not AUTH_API_PASSWORD:
     raise RuntimeError(
@@ -291,11 +296,15 @@ def render_forgot_password_page(message: str = "", is_error: bool = False) -> st
 """
 
 
-def _send_forgot_password_email(email: str) -> None:
-    random_text = secrets.token_urlsafe(32)
+def _send_forgot_password_email(email: str, reset_link: str) -> None:
     body = (
-        "Solicitacao de recuperacao de senha recebida.\n\n"
-        f"Texto aleatorio temporario: {random_text}\n"
+        "Ola,\n\n"
+        "Recebemos uma solicitacao para redefinicao de senha da sua conta.\n"
+        "Para continuar com seguranca, utilize o link abaixo:\n\n"
+        f"{reset_link}\n\n"
+        "Se voce nao solicitou esta alteracao, ignore este e-mail.\n\n"
+        "Atenciosamente,\n"
+        "Equipe de Suporte"
     )
 
     msg = EmailMessage()
@@ -317,6 +326,54 @@ def _send_forgot_password_email(email: str) -> None:
             server.starttls()
         server.login(EMAIL_SMTP_USER, EMAIL_SMTP_PASSWORD)
         server.send_message(msg)
+
+
+def _request_password_reset_link(email: str) -> tuple[bool, str]:
+    credentials = f"{AUTH_API_USER}:{AUTH_API_PASSWORD}".encode("utf-8")
+    auth_header = base64.b64encode(credentials).decode("utf-8")
+    payload = json.dumps({"email": email}).encode("utf-8")
+
+    req = urllib_request.Request(
+        FORGOT_PASSWORD_WEBHOOK_URL,
+        data=payload,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Basic {auth_header}",
+        },
+    )
+
+    handlers = [urllib_request.ProxyHandler({})]
+    if not AUTH_API_VERIFY_SSL:
+        insecure_context = ssl._create_unverified_context()
+        handlers.append(urllib_request.HTTPSHandler(context=insecure_context))
+    opener = urllib_request.build_opener(*handlers)
+
+    try:
+        with opener.open(req, timeout=15) as response:
+            body = response.read().decode("utf-8")
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore")
+        try:
+            data = json.loads(body) if body else {}
+            return False, data.get("ret", "Falha ao solicitar recuperacao de senha.")
+        except json.JSONDecodeError:
+            return False, "Falha ao solicitar recuperacao de senha."
+    except (URLError, TimeoutError):
+        return False, "Servico de recuperacao indisponivel. Tente novamente."
+
+    try:
+        data = json.loads(body) if body else {}
+    except json.JSONDecodeError:
+        return False, "Resposta invalida do servico de recuperacao."
+
+    if bool(data.get("valid")):
+        link = str(data.get("link", "")).strip()
+        if not link:
+            return False, "Link de recuperacao nao retornado pelo servico."
+        return True, link
+
+    return False, str(data.get("ret", "Erro ao solicitar recuperacao de senha."))
 
 
 def _authenticate_with_api(username: str, password: str) -> tuple[bool, str]:
@@ -418,7 +475,14 @@ def forgot_password(email: str = Form(...)):
         )
 
     try:
-        _send_forgot_password_email(email=email.strip())
+        clean_email = email.strip()
+        has_link, link_or_error = _request_password_reset_link(email=clean_email)
+        if not has_link:
+            return HTMLResponse(
+                content=render_forgot_password_page(link_or_error, is_error=True),
+                status_code=400,
+            )
+        _send_forgot_password_email(email=clean_email, reset_link=link_or_error)
     except Exception:
         return HTMLResponse(
             content=render_forgot_password_page(
