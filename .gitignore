@@ -8,8 +8,6 @@ session.json
 # C extensions
 *.so
 
-__pycache__/
-
 # Distribution / packaging
 .Python
 build/

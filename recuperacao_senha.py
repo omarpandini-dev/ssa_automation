@@ -40,6 +40,8 @@ def render_reset_password_page(
     escaped_token = html.escape(token, quote=True)
     show_form = bool(token.strip())
     form_html = ""
+    back_to_login_html = ""
+    subtitle_html = "<p>Defina a nova senha para concluir a recuperacao.</p>"
     if show_form:
         form_html = f"""
     <form method="post" action="/reset-password">
@@ -53,6 +55,15 @@ def render_reset_password_page(
 
       <button type="submit">Enviar</button>
     </form>
+"""
+    elif message and not is_error:
+        subtitle_html = ""
+        back_to_login_html = """
+    <p style="margin-top:12px;margin-bottom:0;">
+      <a href="/" style="display:inline-block;text-decoration:none;background:var(--accent);color:#fff;padding:10px 14px;border-radius:10px;font-weight:600;">
+        Voltar ao login
+      </a>
+    </p>
 """
 
     return f"""<!doctype html>
@@ -145,9 +156,10 @@ def render_reset_password_page(
 <body>
   <main class="card">
     <h1>Alterar senha</h1>
-    <p>Defina a nova senha para concluir a recuperacao.</p>
+    {subtitle_html}
     {message_html}
     {form_html}
+    {back_to_login_html}
   </main>
 </body>
 </html>
