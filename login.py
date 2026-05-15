@@ -38,13 +38,17 @@ EMAIL_SMTP_FROM = os.getenv("EMAIL_SMTP_FROM")
 EMAIL_SMTP_STARTTLS = os.getenv("EMAIL_SMTP_STARTTLS", "true").lower() == "true"
 SESSION_IDLE_TIMEOUT_SECONDS = 30 * 60
 FORGOT_PASSWORD_WEBHOOK_URL = os.getenv(
-    "FORGOT_PASSWORD_WEBHOOK_URL",
-    "https://n8n-fila-n8n-start.cr61qk.easypanel.host/webhook/cde833b3-e5d6-4395-a494-d1223625fcbc",
+    "FORGOT_PASSWORD_WEBHOOK_URL"
 )
 
-if not AUTH_API_URL or not AUTH_API_USER or not AUTH_API_PASSWORD:
+if (
+    not AUTH_API_URL
+    or not AUTH_API_USER
+    or not AUTH_API_PASSWORD
+    or not FORGOT_PASSWORD_WEBHOOK_URL
+):
     raise RuntimeError(
-        "Defina AUTH_API_URL, AUTH_API_USER e AUTH_API_PASSWORD no arquivo .env antes de iniciar a aplicacao."
+        "Defina AUTH_API_URL, AUTH_API_USER, AUTH_API_PASSWORD e FORGOT_PASSWORD_WEBHOOK_URL no arquivo .env antes de iniciar a aplicacao."
     )
 
 

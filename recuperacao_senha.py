@@ -18,13 +18,21 @@ AUTH_API_USER = os.getenv("AUTH_API_USER")
 AUTH_API_PASSWORD = os.getenv("AUTH_API_PASSWORD")
 AUTH_API_VERIFY_SSL = os.getenv("AUTH_API_VERIFY_SSL", "true").lower() == "true"
 RESET_TOKEN_VALIDATE_URL = os.getenv(
-    "RESET_TOKEN_VALIDATE_URL",
-    "https://n8n-fila-n8n-start.cr61qk.easypanel.host/webhook/18609c1e-cd4d-425a-9f1b-a8aad4c0b51f",
+    "RESET_TOKEN_VALIDATE_URL"
 )
 RESET_PASSWORD_UPDATE_URL = os.getenv(
-    "RESET_PASSWORD_UPDATE_URL",
-    "https://n8n-fila-n8n-start.cr61qk.easypanel.host/webhook/2f4c4bee-f1ce-49de-97a6-56c9dbb08695",
+    "RESET_PASSWORD_UPDATE_URL"
 )
+
+if (
+    not AUTH_API_USER
+    or not AUTH_API_PASSWORD
+    or not RESET_TOKEN_VALIDATE_URL
+    or not RESET_PASSWORD_UPDATE_URL
+):
+    raise RuntimeError(
+        "Defina AUTH_API_USER, AUTH_API_PASSWORD, RESET_TOKEN_VALIDATE_URL e RESET_PASSWORD_UPDATE_URL no arquivo .env antes de iniciar a aplicacao."
+    )
 
 
 def render_reset_password_page(
